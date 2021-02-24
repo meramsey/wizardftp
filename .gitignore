@@ -81,3 +81,4 @@ target/
 .ipynb_checkpoints
 .eggs/
 PyQt_FTP_Client.egg-info/
+.idea/
