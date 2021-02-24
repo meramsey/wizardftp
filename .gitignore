@@ -35,7 +35,7 @@ mydjangosite/.idea/
 /stats.txt
 venv/
 __pycache__/
-
+.venv/
 /venv-fbs/
 /target/
 /src/main/icons/linux/Thumbs.db
