@@ -1,15 +1,15 @@
 About this project
 ==================
-This is FTP server & client, client using PyQt GUI framework
+This is FTP server & client, client using PyQt5 GUI framework
 
 ## Why I create this project?
 Because Qt framework seems a powerful and interesting framework, so I want to learn and try this framework. Another reason I'm interested about `Internet Protocol` including the FTP Protocol so I want to try to implement FTP Protocol.
 
 ## Dependencies
-PyQt4.x
+PyQt5.x
 
 ## Tested on
-`Python2.7` & `python3.5`
+`python3.8`
 
 ## Usage
 ```bash

@@ -2,7 +2,7 @@ import os
 from setuptools import setup
 
 APP = ['ftp_client.py']
-APP_NAME = 'PyQt FTP Client'
+APP_NAME = 'PyQt5 FTP Client'
 DATA_FILES = [
     os.path.join(os.path.dirname(__file__), 'icons/home.png'),
     os.path.join(os.path.dirname(__file__), 'icons/back.png'),
@@ -17,7 +17,7 @@ DATA_FILES = [
 # OPTIONS = {'argv_emulation': True}
 OPTIONS = {
     'argv_emulation': True,
-    'includes': ['sip', 'PyQt4']
+    'includes': ['sip', 'PyQt5']
 }
 
 setup(

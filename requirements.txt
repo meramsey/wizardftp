@@ -1,0 +1,16 @@
+wheel
+setuptools
+asyncio
+docutils
+future
+PyInstaller
+PyNaCl
+PyOpenGL
+PyQt5
+PyQt5-sip
+PyQt5-stubs
+typing
+urllib3
+zipp
+filehash
+Pillow
