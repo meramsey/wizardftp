@@ -45,10 +45,15 @@ Screenshots
 ftp server
 ''''''''''
 .. image:: https://gitlab.com/mikeramsey/wizardftp/-/raw/master/screenshots/server.jpg
+   :width: 90%
+   :align: center
 
 ftp client
 ''''''''''
 .. image:: https://gitlab.com/mikeramsey/wizardftp/-/raw/master/screenshots/client_main_window.png
+   :width: 90%
+   :align: center
+
 
 Credits
 ----------------
