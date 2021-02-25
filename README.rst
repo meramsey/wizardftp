@@ -44,7 +44,19 @@ Screenshots
 
 ftp server
 ''''''''''
+.. image:: https://gitlab.com/mikeramsey/wizardftp/-/raw/master/screenshots/server.jpg
 
 ftp client
 ''''''''''
+.. image:: https://gitlab.com/mikeramsey/wizardftp/-/raw/master/screenshots/client_main_window.png
 
+Credits
+----------------
+Original PyQt4 version which this was based on
+https://github.com/jacklam718/ftp
+
+permissions.py source from Perfm
+https://github.com/keysemble/perfm/
+
+Humanbytes Filesize function
+https://stackoverflow.com/a/63839503/8874388

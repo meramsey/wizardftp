@@ -1,6 +1,8 @@
 from typing import List, Union
 
 
+# See Source Explanation: https://stackoverflow.com/a/63839503/8874388
+
 class HumanBytes:
     METRIC_LABELS: List[str] = ["B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
     BINARY_LABELS: List[str] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
