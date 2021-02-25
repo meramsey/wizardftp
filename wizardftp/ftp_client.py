@@ -4,17 +4,45 @@ import os
 import sys
 from threading import Thread
 from ftplib import FTP
+from urllib.parse import urlparse
+import tomlkit
 from utils import fileProperty
 from dialog import loginDialog, ProgressDialog, DownloadProgressWidget, UploadProgressWidget
+from permissions import FilePerm
+from humanbytes import HumanBytes
 
 from PyQt5 import uic, QtWidgets, QtCore, QtGui
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 
+project_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+home_directory = os.path.expanduser('~')
 
 app_icon_path = os.path.join(os.path.dirname(__file__), 'icons')
 qIcon = lambda name: QtGui.QIcon(os.path.join(app_icon_path, name))
+
+QApplication.setApplicationName("WizardFTP")
+QApplication.setOrganizationName("WizardAssistant")
+QApplication.setOrganizationDomain("wizardassistant.com")
+
+
+def _get_project_meta():
+    with open('../pyproject.toml') as pyproject:
+        file_contents = pyproject.read()
+
+    return tomlkit.parse(file_contents)['tool']['poetry']
+
+
+pkg_meta = _get_project_meta()
+project = str(pkg_meta['name'])
+copyright = '2021, wizardassistant.services'  # noqa: WPS125
+author = 'wizardassistant.services'
+
+# The short X.Y version
+version = str(pkg_meta['version'])
+# The full version, including alpha/beta/rc tags
+release = version
 
 
 # ---------------------------------------------------------------------------------#
@@ -38,12 +66,16 @@ class BaseGuiWidget(QWidget):
         self.mainLayout.addWidget(self.fileList)
         # self.mainLayout.setMargin(5)
         self.setLayout(self.mainLayout)
+        self.setWindowTitle(QApplication.applicationName() + " v" + version)
 
         # completer for path edit
         completer = QCompleter()
         self.completerModel = QStringListModel()
         completer.setModel(self.completerModel)
         self.pathEdit.setCompleter(completer)
+        # Custom context menu
+        self.fileList.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.fileList.customContextMenuRequested.connect(self.menu_context_tree)
 
     def createGroupboxWidget(self):
         self.pathEdit = QLineEdit()
@@ -78,7 +110,33 @@ class BaseGuiWidget(QWidget):
         self.fileList.setIconSize(QSize(20, 20))
         self.fileList.setRootIsDecorated(False)
         self.fileList.setHeaderLabels(('Name', 'Size', 'Owner', 'Group', 'Time', 'Mode'))
-        self.fileList.header().setStretchLastSection(False)
+        self.fileList.header().setStretchLastSection(True)
+        self.fileList.setSortingEnabled(True)
+        #self.fileList.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        # self.fileList.setTreePosition(0)
+        # if not self.fileList.currentItem():
+        #     self.fileList.setCurrentItem(self.fileList.topLevelItem(0))
+        #     self.fileList.setEnabled(True)
+        # Connect the contextmenu
+
+    def menu_context_tree(self, point):
+        # Infos about the node selected.
+        index = self.fileList.indexAt(point)
+
+        if not index.isValid():
+            return
+
+        item = self.fileList.itemAt(point)
+        name = item.text(0)  # The text of the node.
+
+        # We build the menu.
+        menu = QMenu()
+        action = menu.addAction("Mouse above")
+        # action = menu.addAction(name)
+        menu.addSeparator()
+        action_1 = menu.addAction("Change Permissions")
+        action_2 = menu.addAction("File information")
+        action_3 = menu.addAction("Copy File Path")
 
 
 class LocalGuiWidget(BaseGuiWidget):
@@ -109,6 +167,22 @@ class FtpClient(QWidget):
         self.ftp = FTP()
         self.setupGui()
         self.downloads = []
+        self.localBrowseRec = []
+        self.remoteBrowseRec = []
+        self.local_pwd = os.getenv('HOME')
+        self.ftp_hostname = ''
+        self.ftp_username = ''
+        self.ftp_password = ''
+        # self.ftp_hostname = os.getenv('ftp_hostname')
+        # self.ftp_username = os.getenv('ftp_username')
+        # self.ftp_password = os.getenv('ftp_password')
+
+        self.local.pathEdit.setText(self.local_pwd)
+        self.localOriginPath = self.local_pwd
+        self.localBrowseRec.append(self.local_pwd)
+        self.loadToLocalFileList()
+
+        # Signals
         self.remote.homeButton.clicked.connect(self.cdToRemoteHomeDirectory)
         self.remote.fileList.itemDoubleClicked.connect(self.cdToRemoteDirectory)
         self.remote.fileList.itemClicked.connect(lambda: self.remote.downloadButton.setEnabled(True))
@@ -142,53 +216,58 @@ class FtpClient(QWidget):
         self.setLayout(mainLayout)
 
     def initialize(self):
-        self.localBrowseRec = []
-        self.remoteBrowseRec = []
+        # self.localBrowseRec = []
+        # self.remoteBrowseRec = []
         self.pwd = self.ftp.pwd()
-        self.local_pwd = os.getenv('HOME')
+
+        # self.local_pwd = os.getenv('HOME')
         self.remoteOriginPath = self.pwd
-        self.localOriginPath = self.local_pwd
-        self.localBrowseRec.append(self.local_pwd)
+        # self.localOriginPath = self.local_pwd
+        # self.localBrowseRec.append(self.local_pwd)
         self.remoteBrowseRec.append(self.pwd)
         self.downloadToRemoteFileList()
-        self.loadToLocaFileList()
+        # self.loadToLocaFileList()
 
     def disconnect(self):
         pass
 
     def connect(self):
-        try:
-            from urlparse import urlparse
-        except ImportError:
-            from urllib.parse import urlparse
+        if not bool(self.ftp_hostname):
+            try:
+                from urlparse import urlparse
+            except ImportError:
+                from urllib.parse import urlparse
 
-        result = QInputDialog.getText(self, 'Connect To Host', 'Host Address', QLineEdit.Normal)
-        if not result[1]:
-            return
-        try:
-            host = str(result[0])
-        except AttributeError:
-            host = str(result[0])
+            result = QInputDialog.getText(self, 'Connect To Host', 'Host Address', QLineEdit.Normal)
+            if not result[1]:
+                return
+            try:
+                self.ftp_hostname = str(result[0])
+            except AttributeError:
+                self.ftp_hostname = str(result[0])
 
         try:
-            if urlparse(host).hostname:
-                self.ftp.connect(host=urlparse(host).hostname, port=21, timeout=10)
+            if self.ftp_hostname:
+                self.ftp.connect(host=self.ftp_hostname, port=21, timeout=10)
             else:
-                self.ftp.connect(host=host, port=21, timeout=10)
+                self.ftp.connect(host=self.ftp_hostname, port=21, timeout=10)
             self.login()
         except Exception as error:
             raise error
 
     def login(self):
-        ask = loginDialog(self)
-        if not ask:
-            return
-        else:
-            user, passwd = ask[:2]
-        self.ftp.user = user
-        self.ftp.passwd = passwd
-        self.ftp.login(user=user, passwd=passwd)
+        # if not bool(self.ftp_username) or bool(self.ftp_password):
+        #     ask = loginDialog(self)
+        #     if not ask:
+        #         return
+        #     else:
+        #         self.ftp_username, self.ftp_password = ask[:2]
+
+        # self.ftp.user = self.ftp_username
+        # self.ftp.passwd = self.ftp_password
+        self.ftp.login(user=self.ftp_username, passwd=self.ftp_password)
         self.initialize()
+        self.remote.pathEdit.setText(self.pwd)
 
     '''
     def connect(self, address, port=21, timeout=10):
@@ -218,8 +297,9 @@ class FtpClient(QWidget):
         self.remoteDir = {}
         self.ftp.dir('.', self.addItemToRemoteFileList)
         self.remote.completerModel.setStringList(self.remoteWordList)
+        self.remote.fileList.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
-    def loadToLocaFileList(self):
+    def loadToLocalFileList(self):
         """
         load file and directory list from local computer
         """
@@ -229,9 +309,11 @@ class FtpClient(QWidget):
             pathname = os.path.join(self.local_pwd, f)
             self.addItemToLocalFileList(fileProperty(pathname))
         self.local.completerModel.setStringList(self.localWordList)
+        self.local.fileList.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+
 
     def addItemToRemoteFileList(self, content):
-        mode, num, owner, group, size, date, filename = self.parseFileInfo(content)
+        mode, num, owner, group, filesize_human, date, filename, size = self.parseFileInfo(content)
         if content.startswith('d'):
             icon = qIcon('folder.png')
             pathname = os.path.join(self.pwd, filename)
@@ -243,7 +325,7 @@ class FtpClient(QWidget):
 
         item = QTreeWidgetItem()
         item.setIcon(0, icon)
-        for n, i in enumerate((filename, size, owner, group, date, mode)):
+        for n, i in enumerate((filename, filesize_human, owner, group, date, mode, size)):
             item.setText(n, i)
 
         self.remote.fileList.addTopLevelItem(item)
@@ -251,8 +333,9 @@ class FtpClient(QWidget):
             self.remote.fileList.setCurrentItem(self.remote.fileList.topLevelItem(0))
             self.remote.fileList.setEnabled(True)
 
+
     def addItemToLocalFileList(self, content):
-        mode, num, owner, group, size, date, filename = self.parseFileInfo(content)
+        mode, num, owner, group, filesize_human, date, filename, size = self.parseFileInfo(content)
         if content.startswith('d'):
             icon = qIcon('folder.png')
             pathname = os.path.join(self.local_pwd, filename)
@@ -264,7 +347,7 @@ class FtpClient(QWidget):
 
         item = QTreeWidgetItem()
         item.setIcon(0, icon)
-        for n, i in enumerate((filename, size, owner, group, date, mode)):
+        for n, i in enumerate((filename, filesize_human, owner, group, date, mode, size)):
             # print((filename, size, owner, group, date, mode))
             item.setText(n, i)
         self.local.fileList.addTopLevelItem(item)
@@ -280,7 +363,8 @@ class FtpClient(QWidget):
         item = [f for f in file.split(' ') if f != '']
         mode, num, owner, group, size, date, filename = (
             item[0], item[1], item[2], item[3], item[4], ' '.join(item[5:8]), ' '.join(item[8:]))
-        return mode, num, owner, group, size, date, filename
+        filesize_human = HumanBytes.format(int(size), precision=2)
+        return mode, num, owner, group, filesize_human, date, filename, size
 
     # --------------------------#
     ## for remote file system ##
@@ -296,6 +380,7 @@ class FtpClient(QWidget):
             return
         self.cwd = pathname.startswith(os.path.sep) and pathname or os.path.join(self.pwd, pathname)
         self.updateRemoteFileList()
+        self.remote.pathEdit.setText(self.cwd)
         self.remote.backButton.setEnabled(True)
         if os.path.abspath(pathname) != self.remoteOriginPath:
             self.remote.homeButton.setEnabled(True)
@@ -309,6 +394,7 @@ class FtpClient(QWidget):
         self.remoteBrowseRec.append(pathname)
         self.ftp.cwd(pathname)
         self.pwd = self.ftp.pwd()
+        self.remote.pathEdit.setText(self.pwd)
         self.updateRemoteFileList()
         self.remote.backButton.setEnabled(True)
         if pathname != self.remoteOriginPath:
@@ -329,6 +415,7 @@ class FtpClient(QWidget):
         self.pwd = pathname
         self.ftp.cwd(pathname)
         self.updateRemoteFileList()
+        self.remote.pathEdit.setText(self.pwd)
 
     def cdToRemoteNextDirectory(self):
         pathname = self.remoteBrowseRec[self.remoteBrowseRec.index(self.pwd) + 1]
@@ -345,11 +432,13 @@ class FtpClient(QWidget):
         self.pwd = pathname
         self.ftp.cwd(pathname)
         self.updateRemoteFileList()
+        self.remote.pathEdit.setText(self.pwd)
 
     def cdToRemoteHomeDirectory(self):
         self.ftp.cwd(self.remoteOriginPath)
         self.pwd = self.remoteOriginPath
         self.updateRemoteFileList()
+        self.remote.pathEdit.setText(self.pwd)
         self.remote.homeButton.setEnabled(False)
 
     # -------------------------#
@@ -357,7 +446,7 @@ class FtpClient(QWidget):
     # -------------------------#
     def cdToLocalPath(self):
         try:
-            pathname = str(self.local.pathEdit.text().toUtf8())
+            pathname = str(self.local.pathEdit.text())
         except AttributeError:
             pathname = str(self.local.pathEdit.text())
         pathname = pathname.endswith(os.path.sep) and pathname or os.path.join(self.local_pwd, pathname)
@@ -368,6 +457,7 @@ class FtpClient(QWidget):
             self.localBrowseRec.append(pathname)
             self.local_pwd = pathname
             self.updateLocalFileList()
+            self.local.pathEdit.setText(self.local_pwd)
             self.local.backButton.setEnabled(True)
             print(pathname, self.localOriginPath)
             if os.path.abspath(pathname) != self.localOriginPath:
@@ -382,6 +472,7 @@ class FtpClient(QWidget):
         self.localBrowseRec.append(pathname)
         self.local_pwd = pathname
         self.updateLocalFileList()
+        self.local.pathEdit.setText(self.local_pwd)
         self.local.backButton.setEnabled(True)
         if pathname != self.localOriginPath:
             self.local.homeButton.setEnabled(True)
@@ -399,6 +490,7 @@ class FtpClient(QWidget):
         self.local.nextButton.setEnabled(True)
         self.local_pwd = pathname
         self.updateLocalFileList()
+        self.local.pathEdit.setText(self.local_pwd)
 
     def cdToLocalNextDirectory(self):
         pathname = self.localBrowseRec[self.localBrowseRec.index(self.local_pwd) + 1]
@@ -413,15 +505,17 @@ class FtpClient(QWidget):
         self.local.backButton.setEnabled(True)
         self.local_pwd = pathname
         self.updateLocalFileList()
+        self.local.pathEdit.setText(self.local_pwd)
 
     def cdToLocalHomeDirectory(self):
         self.local_pwd = self.localOriginPath
         self.updateLocalFileList()
+        self.local.pathEdit.setText(self.local_pwd)
         self.local.homeButton.setEnabled(False)
 
     def updateLocalFileList(self):
         self.local.fileList.clear()
-        self.loadToLocaFileList()
+        self.loadToLocalFileList()
 
     def updateRemoteFileList(self):
         self.remote.fileList.clear()
@@ -435,11 +529,11 @@ class FtpClient(QWidget):
 
     def download(self):
         item = self.remote.fileList.currentItem()
-        filesize = int(item.text(1))
+        filesize = int(item.text(6))
 
         try:
-            srcfile = os.path.join(self.pwd, str(item.text(0).toUtf8()))
-            dstfile = os.path.join(self.local_pwd, str(item.text(0).toUtf8()))
+            srcfile = os.path.join(self.pwd, str(item.text(0)))
+            dstfile = os.path.join(self.local_pwd, str(item.text(0)))
         except AttributeError:
             srcfile = os.path.join(self.pwd, str(item.text(0)))
             dstfile = os.path.join(self.local_pwd, str(item.text(0)))
@@ -456,20 +550,22 @@ class FtpClient(QWidget):
 
         file = open(dstfile, 'wb')
         fp = FTP()
-        fp.connect(host=self.ftp.host, port=self.ftp.port, timeout=self.ftp.timeout)
-        fp.login(user=self.ftp.user, passwd=self.ftp.passwd)
+        fp.connect(host=self.ftp_hostname, port=self.ftp.port, timeout=self.ftp.timeout)
+        fp.login(user=self.ftp_username, passwd=self.ftp_password)
         fp.retrbinary(cmd='RETR ' + srcfile, callback=callback)
 
     def upload(self):
         item = self.local.fileList.currentItem()
-        filesize = int(item.text(1))
+        print(item)
+        # filesize = int(item.text(1))
+        filesize = int(item.text(6))
 
         try:
             srcfile = os.path.join(self.local_pwd, str(item.text(0)))
-            dstfile = os.path.join(self.pwd, str(selected_item.text(0)))
+            dstfile = os.path.join(self.pwd, str(item.text(0)))
         except AttributeError:
             srcfile = os.path.join(self.local_pwd, str(item.text(0)))
-            dstfile = os.path.join(self.pwd, str(selected_item.text(0)))
+            dstfile = os.path.join(self.pwd, str(item.text(0)))
 
         pb = self.progressDialog.addProgress(
             type='upload',
@@ -479,8 +575,8 @@ class FtpClient(QWidget):
 
         file = open(srcfile, 'rb')
         fp = FTP()
-        fp.connect(host=self.ftp.host, port=self.ftp.port, timeout=self.ftp.timeout)
-        fp.login(user=self.ftp.user, passwd=self.ftp.passwd)
+        fp.connect(host=self.ftp_hostname, port=self.ftp.port, timeout=self.ftp.timeout)
+        fp.login(user=self.ftp_username, passwd=self.ftp_password)
         fp.storbinary(cmd='STOR ' + dstfile, fp=file, callback=pb.set_value)
 
 

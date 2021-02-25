@@ -11,6 +11,7 @@ PyQt5-sip = "^12.8.1"
 PyQt5-stubs = "^5.15.2"
 setuptools = "^53.0.0"
 wheel = "^0.36.2"
+tomlkit = "^0.7.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
