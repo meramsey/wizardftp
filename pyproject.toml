@@ -3,6 +3,7 @@ name = "wizardftp"
 version = "0.1.0"
 description = "WizardFTP is PyQT5 based FTP client"
 authors = ["Michael Ramsey <mike@hackerdise.me>"]
+license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.8"
